@@ -11,6 +11,7 @@ Ce travail a été réalisé intégralement par un être humain.*/
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
+#include <poll.h>
 #include "../include/buffer.h"
 #include "../include/utils.h"
 
@@ -28,21 +29,50 @@ int main(int argc, char *argv[])
 	int port = argc < 2 ? PORT_FREESCORD : atoi(argv[1]);
 	int client = connect_serveur_tcp(ADDR_LOCALE, port);
 	if (client < 0)
+	{
+		printf("Echec conexion du client");
 		exit(1);
+	}
+
+	printf("Entrez un message : ");
+
+	struct pollfd tab[2] = {
+		{.fd = 0, .events = POLLIN},
+		{.fd = client, .events = POLLIN}};
 
 	while (1)
+
 	{
-		printf("Entrez un message : ");
-		if (fgets(buf_envoi, MAX, stdin) == NULL)
-			break;
+		int monPoll = poll(tab, 2, -1);
 
-		send(client, buf_envoi, strlen(buf_envoi), 0);
+		if (monPoll < 0)
+		{
+			perror("Echec dans le POLL");
+			exit(1);
+		}
 
-		ssize_t r = recv(client, buf_recep, sizeof(buf_recep) - 1, 0);
-		if (r <= 0)
-			break;
-		buf_recep[r] = '\0';
-		printf("Réponse du serveur : %s", buf_recep);
+		if (tab[0].revents & (POLLIN | POLLHUP))
+		{
+			if (fgets(buf_envoi, MAX, stdin) == NULL)
+				break;
+
+			send(client, buf_envoi, strlen(buf_envoi), 0);
+		}
+
+		else if (tab[1].revents & (POLLIN | POLLHUP))
+		{
+
+			ssize_t r = recv(client, buf_recep, sizeof(buf_recep) - 1, 0);
+			if (r <= 0)
+				break;
+			buf_recep[r] = '\0';
+			printf("Réponse du serveur : %s", buf_recep);
+		}
+
+		else
+		{
+			continue;
+		}
 	}
 
 	close(client);

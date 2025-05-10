@@ -67,19 +67,20 @@ void *handle_client(void *clt)
 			printf("Message reçu : %s\n", buff);
 			send(iencli->sock, buff, size, 0);
 			write(tube[1], buff, size);
+			// write(1, buff, size);
 		}
-		else if (size == 0)
+		else if (size <= 0)
 		{
 			// Client a fermé la connexion proprement
 			printf("Client déconnecté.\n");
 			list_remove_element(list_user, iencli);
 			break;
 		}
-		else
-		{
-			perror("Erreur réception");
-			break;
-		}
+		// else
+		// {
+		// 	perror("Erreur réception");
+		// 	break;
+		// }
 	}
 
 	close(iencli->sock);
