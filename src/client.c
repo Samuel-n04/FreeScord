@@ -33,8 +33,10 @@ int main(int argc, char *argv[])
 		printf("Echec conexion du client");
 		exit(1);
 	}
-
-	printf("Entrez un message : ");
+	else
+	{
+		printf("Vous etes connecté au serveur !! \n Envoyez votre premier message \n ");
+	}
 
 	struct pollfd tab[2] = {
 		{.fd = 0, .events = POLLIN},
@@ -43,6 +45,7 @@ int main(int argc, char *argv[])
 	while (1)
 
 	{
+
 		int monPoll = poll(tab, 2, -1);
 
 		if (monPoll < 0)
@@ -55,23 +58,19 @@ int main(int argc, char *argv[])
 		{
 			if (fgets(buf_envoi, MAX, stdin) == NULL)
 				break;
-
+			// scanf("%s", buf_envoi);
 			send(client, buf_envoi, strlen(buf_envoi), 0);
+			printf("Message envoye : %s\n", buf_envoi);
 		}
 
-		else if (tab[1].revents & (POLLIN | POLLHUP))
+		if (tab[1].revents & (POLLIN | POLLHUP))
 		{
 
 			ssize_t r = recv(client, buf_recep, sizeof(buf_recep) - 1, 0);
 			if (r <= 0)
 				break;
 			buf_recep[r] = '\0';
-			printf("Réponse du serveur : %s", buf_recep);
-		}
-
-		else
-		{
-			continue;
+			printf("Message de mon interlocuteur : %s", buf_recep);
 		}
 	}
 

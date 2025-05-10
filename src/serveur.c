@@ -19,6 +19,7 @@ Ce travail a été réalisé intégralement par un être humain. */
 int tube[2];
 struct list *list_user = NULL;
 pthread_t repeteur;
+int last;
 
 int create_listening_sock(uint16_t port)
 {
@@ -61,11 +62,12 @@ void *handle_client(void *clt)
 	while (1)
 	{
 		ssize_t size = recv(iencli->sock, buff, sizeof(buff) - 1, 0);
+		last = iencli->sock;
 		if (size > 0)
 		{
 			buff[size] = '\0';
 			printf("Message reçu : %s\n", buff);
-			send(iencli->sock, buff, size, 0);
+			// send(iencli->sock, buff, size, 0);
 			write(tube[1], buff, size);
 			// write(1, buff, size);
 		}
@@ -102,9 +104,9 @@ void *fonc_thread(void *arg)
 			buff_thread[size] = '\0';
 			for (int i = 0; i < list_length(list_user); ++i)
 			{
-
 				struct user *tmp = (struct user *)list_get(list_user, i);
-				send(tmp->sock, buff_thread, size, 0);
+				if (tmp->sock != last)
+					send(tmp->sock, buff_thread, size, 0);
 			}
 		}
 	}
