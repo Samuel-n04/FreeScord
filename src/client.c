@@ -15,7 +15,7 @@ Ce travail a été réalisé intégralement par un être humain.*/
 #include "../include/buffer.h"
 #include "../include/utils.h"
 
-#define MAX 100
+#define MAX 512
 #define PORT_FREESCORD 4321
 #define ADDR_LOCALE "127.0.0.1"
 
@@ -28,6 +28,8 @@ int main(int argc, char *argv[])
 
 	int port = argc < 2 ? PORT_FREESCORD : atoi(argv[1]);
 	int client = connect_serveur_tcp(ADDR_LOCALE, port);
+	// buffer *recep = buff_create(client, MAX);
+
 	if (client < 0)
 	{
 		printf("Echec conexion du client");

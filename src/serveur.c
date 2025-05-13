@@ -57,7 +57,7 @@ void *handle_client(void *clt)
 {
 	struct user *iencli = (struct user *)clt;
 	list_add(list_user, iencli);
-	char buff[100];
+	char buff[512];
 
 	while (1)
 	{
@@ -93,7 +93,7 @@ void *handle_client(void *clt)
 void *fonc_thread(void *arg)
 {
 
-	char buff_thread[100];
+	char buff_thread[512];
 	while (1)
 	{
 
