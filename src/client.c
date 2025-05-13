@@ -42,7 +42,7 @@ int main(int argc, char *argv[])
 	}
 	else
 	{
-		printf("Vous etes connecté au serveur !! \n Envoyez votre premier message \n ");
+		printf("Vous etes connecté au serveur !! \n");
 	}
 
 	struct pollfd tab[2] = {
