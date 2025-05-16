@@ -17,7 +17,7 @@ EXE = srv clt
 TEST = test_list test_buff
 
 # Objets pour le serveur
-OBJ_SRV = $(SRC_DIR)/serveur.o $(SRC_DIR)/list.o $(SRC_DIR)/user.o
+OBJ_SRV = $(SRC_DIR)/serveur.o $(SRC_DIR)/list.o $(SRC_DIR)/user.o $(SRC_DIR)/utils.o
 
 # Objets pour le client
 OBJ_CLT = $(SRC_DIR)/client.o $(SRC_DIR)/buffer.o $(SRC_DIR)/utils.o
@@ -45,7 +45,7 @@ clt: $(OBJ_CLT)
 
 # Dépendances spécifiques
 $(SRC_DIR)/client.o: $(SRC_DIR)/client.c $(INCLUDE_DIR)/buffer.h $(INCLUDE_DIR)/utils.h
-$(SRC_DIR)/serveur.o: $(SRC_DIR)/serveur.c $(INCLUDE_DIR)/list.h $(INCLUDE_DIR)/user.h
+$(SRC_DIR)/serveur.o: $(SRC_DIR)/serveur.c $(INCLUDE_DIR)/list.h $(INCLUDE_DIR)/user.h $(INCLUDE_DIR)/utils.h
 $(SRC_DIR)/user.o: $(SRC_DIR)/user.c $(INCLUDE_DIR)/user.h
 $(SRC_DIR)/utils.o: $(SRC_DIR)/utils.c $(INCLUDE_DIR)/utils.h
 $(SRC_DIR)/list.o: $(SRC_DIR)/list.c $(INCLUDE_DIR)/list.h

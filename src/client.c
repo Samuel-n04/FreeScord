@@ -1,173 +1,177 @@
-/*Jean-Samuel PIERRE 12201116
-Je déclare qu'il s'agit de mon propre travail.
-Ce travail a été réalisé intégralement par un être humain.*/
+/* client.c
+ * Jean-Samuel PIERRE 12201116
+ * Je déclare qu'il s'agit de mon propre travail.
+ */
+
 #include <unistd.h>
 #include <sys/socket.h>
-#include <fcntl.h>
-#include <pthread.h>
+#include <poll.h>
 #include <arpa/inet.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <errno.h>
-#include <poll.h>
 #include "../include/buffer.h"
 #include "../include/utils.h"
+
 #define MAX 512
 #define PORT_FREESCORD 4321
 #define ADDR_LOCALE "127.0.0.1"
 
-int connect_serveur_tcp(char *adresse, uint16_t port);
+int connect_serveur_tcp(const char *adresse, uint16_t port)
+{
+	int sock = socket(AF_INET, SOCK_STREAM, 0);
+	if (sock < 0)
+	{
+		perror("socket");
+		return -1;
+	}
+	struct sockaddr_in srv = {
+		.sin_family = AF_INET,
+		.sin_port = htons(port)};
+	if (inet_pton(AF_INET, adresse, &srv.sin_addr) <= 0)
+	{
+		perror("inet_pton");
+		close(sock);
+		return -1;
+	}
+	if (connect(sock, (struct sockaddr *)&srv, sizeof(srv)) < 0)
+	{
+		perror("connect");
+		close(sock);
+		return -1;
+	}
+	return sock;
+}
 
 int main(int argc, char *argv[])
 {
-	char buf_envoi[MAX];
-	char buf_recep[MAX];
-	int port = argc < 2 ? PORT_FREESCORD : atoi(argv[1]);
+	int port = (argc < 2) ? PORT_FREESCORD : atoi(argv[1]);
 	int client = connect_serveur_tcp(ADDR_LOCALE, port);
-
-	// Création du buffer pour la lecture bufferisée
-	buffer *recep = buff_create(client, MAX);
-	if (recep == NULL)
-	{
-		perror("Échec création buffer");
-		close(client);
-		exit(1);
-	}
-
 	if (client < 0)
+		exit(EXIT_FAILURE);
+
+	printf("Vous êtes connecté au serveur !!\n");
+	buffer *recep = buff_create(client, MAX);
+	if (!recep)
 	{
-		printf("Echec conexion du client");
-		exit(1);
-	}
-	else
-	{
-		printf("Vous etes connecté au serveur !! \n");
+		perror("buff_create");
+		close(client);
+		exit(EXIT_FAILURE);
 	}
 
-	struct pollfd tab[2] = {
+	char line[MAX];
+
+	/* 1) Lecture du message de bienvenue jusqu'à la ligne vide */
+	while (buff_fgets_crlf(recep, line, MAX))
+	{
+		crlf_to_lf(line);
+		/* supprimer '\n' final */
+		line[strcspn(line, "\n")] = '\0';
+		if (line[0] == '\0')
+			break;
+		printf("%s\n", line);
+	}
+
+	/* 2) Envoi du pseudonyme */
+	printf("Entrez votre pseudonyme : ");
+	if (!fgets(line, MAX, stdin))
+	{
+		buff_free(recep);
+		close(client);
+		exit(EXIT_FAILURE);
+	}
+	/* supprimer '\n' et ajouter un seul avant conversion */
+	line[strcspn(line, "\n")] = '\0';
+	size_t L = strlen(line);
+	if (L < MAX - 1)
+	{
+		line[L] = '\n';
+		line[L + 1] = '\0';
+	}
+	lf_to_crlf(line);
+	if (write(client, line, strlen(line)) < 0)
+	{
+		perror("write pseudo");
+		buff_free(recep);
+		close(client);
+		exit(EXIT_FAILURE);
+	}
+
+	/* 3) Lecture de la réponse du serveur */
+	if (!buff_fgets_crlf(recep, line, MAX))
+	{
+		perror("buff_fgets_crlf");
+		buff_free(recep);
+		close(client);
+		exit(EXIT_FAILURE);
+	}
+	crlf_to_lf(line);
+	line[strcspn(line, "\n")] = '\0';
+	char code = line[0];
+	if (code != '0')
+	{
+		if (code == '1')
+			fprintf(stderr, "Erreur : pseudo invalide\n");
+		else if (code == '2')
+			fprintf(stderr, "Erreur : caractère ':' interdit\n");
+		else if (code == '3')
+			fprintf(stderr, "Erreur : commande invalide\n");
+		else
+			fprintf(stderr, "Réponse inattendue : %s\n", line);
+		buff_free(recep);
+		close(client);
+		exit(EXIT_FAILURE);
+	}
+	printf("Serveur : %s\n", line + 2);
+
+	/* 4) Boucle de communication */
+	struct pollfd fds[2] = {
 		{.fd = 0, .events = POLLIN},
 		{.fd = client, .events = POLLIN}};
 
 	while (1)
 	{
-		// Vérifier d'abord s'il reste des données à lire dans le buffer
 		if (buff_ready(recep))
 		{
-			// Il y a déjà des données dans le buffer, traiter immédiatement
-			if (buff_fgets_crlf(recep, buf_recep, MAX) != NULL)
+			if (buff_fgets_crlf(recep, line, MAX))
 			{
-				// Conversion CRLF vers LF pour l'affichage
-				crlf_to_lf(buf_recep);
-				printf("Message de mon interlocuteur : %s", buf_recep);
-				continue; // Continuer pour traiter d'éventuelles autres lignes complètes
+				crlf_to_lf(line);
+				line[strcspn(line, "\n")] = '\0';
+				printf("Reçu : %s\n", line);
+				continue;
 			}
 		}
+		if (poll(fds, 2, -1) < 0)
+			break;
 
-		// Attendre uniquement s'il n'y a pas de données disponibles dans le buffer
-		int monPoll = poll(tab, 2, -1);
-		if (monPoll < 0)
+		/* saisir et envoyer */
+		if (fds[0].revents & POLLIN)
 		{
-			perror("Echec dans le POLL");
-			exit(1);
-		}
-
-		// Gestion de l'entrée standard (envoi de messages)
-		if (tab[0].revents & (POLLIN | POLLHUP))
-		{
-			if (fgets(buf_envoi, MAX, stdin) == NULL)
+			if (!fgets(line, MAX, stdin))
 				break;
-
-			// Convertir les LF en CRLF avant d'envoyer
-			char *message_crlf = lf_to_crlf(buf_envoi);
-			size_t size = strlen(message_crlf);
-
-			// Écriture complète du message dans le socket (intégré dans le main)
-			size_t ecrit = 0;
-			while (ecrit < size)
+			line[strcspn(line, "\n")] = '\0';
+			size_t l = strlen(line);
+			if (l < MAX - 1)
 			{
-				ssize_t res = write(client, message_crlf + ecrit, size - ecrit);
-
-				if (res < 0)
-				{
-					// Erreur d'écriture
-					if (errno == EINTR)
-					{
-						// Signal interrompu, réessayer
-						continue;
-					}
-					perror("Erreur lors de l'envoi du message");
-					close(client);
-					buff_free(recep);
-					exit(1);
-				}
-				else if (res == 0)
-				{
-					// Connexion fermée
-					printf("Connexion fermée pendant l'envoi\n");
-					close(client);
-					buff_free(recep);
-					exit(1);
-				}
-
-				ecrit += res;
+				line[l] = '\n';
+				line[l + 1] = '\0';
 			}
-
-			printf("Message envoye : %s", buf_envoi);
+			lf_to_crlf(line);
+			write(client, line, strlen(line));
 		}
 
-		// Gestion des données reçues depuis le serveur
-		if (tab[1].revents & (POLLIN | POLLHUP))
+		/* réception serveur */
+		if (fds[1].revents & POLLIN)
 		{
-			// Tenter de lire une ligne complète du buffer
-			if (buff_fgets_crlf(recep, buf_recep, MAX) == NULL)
-			{
-				// Erreur ou fin de fichier
-				if (buff_eof(recep))
-				{
-					printf("Connexion fermée par le serveur\n");
-				}
-				else
-				{
-					perror("Erreur lors de la lecture");
-				}
+			if (!buff_fgets_crlf(recep, line, MAX))
 				break;
-			}
-
-			// Conversion de CRLF vers LF pour l'affichage local
-			crlf_to_lf(buf_recep);
-			printf("Message de mon interlocuteur : %s", buf_recep);
+			crlf_to_lf(line);
+			line[strcspn(line, "\n")] = '\0';
+			printf("Serveur : %s\n", line);
 		}
 	}
 
-	// Libération des ressources
 	buff_free(recep);
 	close(client);
 	return 0;
-}
-
-int connect_serveur_tcp(char *adresse, uint16_t port)
-{
-	int socket_client = socket(AF_INET, SOCK_STREAM, 0);
-	if (socket_client < 0)
-	{
-		perror("Echec creation socket");
-		return -1;
-	}
-	struct sockaddr_in addClient;
-	addClient.sin_family = AF_INET;
-	addClient.sin_port = htons(port);
-	if (inet_pton(AF_INET, adresse, &addClient.sin_addr) <= 0)
-	{
-		perror("Echec de la conversion en binaire");
-		close(socket_client);
-		return -1;
-	}
-	if (connect(socket_client, (struct sockaddr *)&addClient, sizeof(addClient)) < 0)
-	{
-		perror("Echec de la connexion");
-		close(socket_client);
-		return -1;
-	}
-	return socket_client;
 }

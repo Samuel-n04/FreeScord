@@ -1,18 +1,18 @@
-/* Jean-Samuel PIERRE 12201116
-Je déclare qu'il s'agit de mon propre travail.
-Ce travail a été réalisé intégralement par un être humain. */
+/* serveur.c
+ * Jean-Samuel PIERRE 12201116
+ * Je déclare qu'il s'agit de mon propre travail.
+ */
 
 #include <unistd.h>
 #include <sys/socket.h>
-#include <fcntl.h>
 #include <pthread.h>
 #include <arpa/inet.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <errno.h>
 #include "../include/list.h"
 #include "../include/user.h"
+#include "../include/utils.h"
 
 #define PORT_FREESCORD 4321
 
@@ -21,146 +21,195 @@ struct list *list_user = NULL;
 pthread_t repeteur;
 int last;
 
+// Crée la socket serveur et lance le listen
 int create_listening_sock(uint16_t port)
 {
-	int socket_serv = socket(AF_INET, SOCK_STREAM, 0);
-	if (socket_serv < 0)
-	{
-		perror("Échec création socket serveur");
-		return -1;
-	}
-
-	struct sockaddr_in addrServ;
-	addrServ.sin_family = AF_INET;
-	addrServ.sin_addr.s_addr = INADDR_ANY;
-	addrServ.sin_port = htons(port);
-
-	if (bind(socket_serv, (struct sockaddr *)&addrServ, sizeof(addrServ)) < 0)
-	{
-		perror("Échec du bind");
-		close(socket_serv);
-		return -1;
-	}
-
-	if (listen(socket_serv, 10) < 0)
-	{
-		perror("Échec du listen");
-		close(socket_serv);
-		return -1;
-	}
-
-	return socket_serv;
+    int sock = socket(AF_INET, SOCK_STREAM, 0);
+    if (sock < 0)
+    {
+        perror("socket");
+        return -1;
+    }
+    struct sockaddr_in addr = {
+        .sin_family = AF_INET,
+        .sin_addr.s_addr = INADDR_ANY,
+        .sin_port = htons(port)};
+    if (bind(sock, (struct sockaddr *)&addr, sizeof(addr)) < 0)
+    {
+        perror("bind");
+        close(sock);
+        return -1;
+    }
+    if (listen(sock, 10) < 0)
+    {
+        perror("listen");
+        close(sock);
+        return -1;
+    }
+    return sock;
 }
 
-// Thread de gestion client
-void *handle_client(void *clt)
-{
-	struct user *iencli = (struct user *)clt;
-	list_add(list_user, iencli);
-	char buff[512];
-
-	while (1)
-	{
-		ssize_t size = recv(iencli->sock, buff, sizeof(buff) - 1, 0);
-		last = iencli->sock;
-		if (size > 0)
-		{
-			buff[size] = '\0';
-			printf("Message reçu : %s\n", buff);
-			// send(iencli->sock, buff, size, 0);
-			write(tube[1], buff, size);
-			// write(1, buff, size);
-		}
-		else if (size <= 0)
-		{
-			// Client a fermé la connexion proprement
-			printf("Client déconnecté.\n");
-			list_remove_element(list_user, iencli);
-			break;
-		}
-		// else
-		// {
-		// 	perror("Erreur réception");
-		// 	break;
-		// }
-	}
-
-	close(iencli->sock);
-	user_free(iencli);
-	return NULL;
-}
-
+// Thread de rebroadcast
 void *fonc_thread(void *arg)
 {
+    (void)arg;
+    char buf[512];
+    while (1)
+    {
+        ssize_t n = read(tube[0], buf, sizeof(buf) - 1);
+        if (n > 0)
+        {
+            buf[n] = '\0';
+            for (int i = 0; i < list_length(list_user); ++i)
+            {
+                struct user *tmp = list_get(list_user, i);
+                if (tmp->sock != last)
+                {
+                    send(tmp->sock, buf, n, 0);
+                }
+            }
+        }
+    }
+    return NULL;
+}
 
-	char buff_thread[512];
-	while (1)
-	{
+// Thread de gestion d’un client
+void *handle_client(void *arg)
+{
+    struct user *iencli = arg;
+    list_add(list_user, iencli);
 
-		ssize_t size = read(tube[0], buff_thread, sizeof(buff_thread) - 1);
+    char chaine[512];
+    // Boucle normale de réception et rebroadcast
+    while (1)
+    {
+        ssize_t n = recv(iencli->sock, chaine, sizeof(chaine) - 1, 0);
+        last = iencli->sock;
+        if (n > 0)
+        {
+            chaine[n] = '\0';
+            printf("[%s] %s", iencli->nickname, chaine);
+            write(tube[1], chaine, n);
+        }
+        else
+        {
+            printf("Client %s déconnecté.\n", iencli->nickname);
+            break;
+        }
+    }
 
-		if (size > 0)
-		{
-			buff_thread[size] = '\0';
-			for (int i = 0; i < list_length(list_user); ++i)
-			{
-				struct user *tmp = (struct user *)list_get(list_user, i);
-				if (tmp->sock != last)
-					send(tmp->sock, buff_thread, size, 0);
-			}
-		}
-	}
-	return NULL;
+    close(iencli->sock);
+    list_remove_element(list_user, iencli);
+    user_free(iencli);
+    return NULL;
 }
 
 int main(int argc, char *argv[])
 {
+    if (pipe(tube) < 0)
+    {
+        perror("pipe");
+        exit(EXIT_FAILURE);
+    }
 
-	if (pipe(tube) < 0)
-	{
-		perror("Échec pipe");
-		exit(EXIT_FAILURE);
-	}
+    int port = (argc < 2) ? PORT_FREESCORD : atoi(argv[1]);
+    int srv = create_listening_sock(port);
+    if (srv < 0)
+        exit(EXIT_FAILURE);
 
-	int port = argc < 2 ? PORT_FREESCORD : atoi(argv[1]);
-	int socket_serv = create_listening_sock(port);
-	if (socket_serv < 0)
-		exit(1);
+    list_user = list_create();
+    printf("Serveur Freescord lancé sur le port %d...\n", port);
 
-	list_user = list_create();
+    if (pthread_create(&repeteur, NULL, fonc_thread, NULL) != 0)
+    {
+        perror("pthread_create");
+        exit(EXIT_FAILURE);
+    }
+    pthread_detach(repeteur);
 
-	printf("Serveur Freescord lancé sur le port %d...\n", port);
+    while (1)
+    {
+        struct user *iencli = user_accept(srv);
+        if (!iencli || iencli->sock < 0)
+        {
+            user_free(iencli);
+            continue;
+        }
 
-	if (pthread_create(&repeteur, NULL, fonc_thread, NULL) != 0)
-	{
-		perror("Echec de creation du thread repeteur");
-		list_free(list_user, NULL);
-		return 1;
-	}
+        // Envoi du message de bienvenue (texte + ligne vide)
+        char message[] =
+            "Bienvenue sur Freescord !\n"
+            "Veuillez choisir un pseudonyme qui commence par nickname(max 16, pas de ':')\n"
+            "\n";
+        lf_to_crlf(message);
+        send(iencli->sock, message, strlen(message), 0);
 
-	pthread_detach(repeteur);
+        // Lecture et validation du pseudo
+        char chaine[512];
+        ssize_t n = recv(iencli->sock, chaine, sizeof(chaine) - 1, 0);
+        if (n <= 0)
+        {
+            close(iencli->sock);
+            user_free(iencli);
+            continue;
+        }
+        chaine[strlen(chaine)] = '\0';
 
-	while (1)
-	{
-		struct user *iencli = user_accept(socket_serv);
-		if (iencli == NULL || iencli->sock < 0)
-		{
-			perror("Échec accept");
-			user_free(iencli);
-			continue;
-		}
+        const char *prefix = "nickname ";
+        if (strncmp(chaine, prefix, strlen(prefix)) != 0)
+        {
+            char rep[] = "3 Commande invalide\n";
+            lf_to_crlf(rep);
+            send(iencli->sock, rep, strlen(rep), 0);
+            close(iencli->sock);
+            user_free(iencli);
+            continue;
+        }
 
-		pthread_t t1;
-		if (pthread_create(&t1, NULL, handle_client, iencli) != 0)
-		{
-			perror("Erreur création thread");
-			close(iencli->sock);
-			user_free(iencli);
-			continue;
-		}
-		pthread_detach(t1); // Pas besoin de join
-	}
+        // Extraction du pseudo (sans CRLF ni LF)
+        char *pseudo = chaine + strlen(prefix);
+        crlf_to_lf(pseudo);
 
-	close(socket_serv);
-	return 0;
+        // Validation du pseudo
+        size_t len = strlen(pseudo);
+        if (len == 0 || len > 16)
+        {
+            char rep[] = "1 Taille du Pseudonyme invalide\n";
+            lf_to_crlf(rep);
+            send(iencli->sock, rep, strlen(rep), 0);
+            close(iencli->sock);
+            user_free(iencli);
+            continue;
+        }
+        if (strchr(pseudo, ':'))
+        {
+            char rep[] = "2 Caractère interdit\n";
+            lf_to_crlf(rep);
+            send(iencli->sock, rep, strlen(rep), 0);
+            close(iencli->sock);
+            user_free(iencli);
+            continue;
+        }
+
+        // OK : on stocke et on répond 0
+        strncpy(iencli->nickname, pseudo, sizeof(iencli->nickname) - 1);
+        iencli->nickname[strlen(iencli->nickname) - 1] = '\0';
+        char rep0[] = "0 Bienvenue !\n";
+        lf_to_crlf(rep0);
+        send(iencli->sock, rep0, strlen(rep0), 0);
+
+        // Lancement du thread de réception
+        pthread_t th;
+        if (pthread_create(&th, NULL, handle_client, iencli) != 0)
+        {
+            perror("pthread_create");
+            close(iencli->sock);
+            user_free(iencli);
+            continue;
+        }
+        pthread_detach(th);
+    }
+
+    close(srv);
+    return 0;
 }
