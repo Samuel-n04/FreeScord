@@ -59,37 +59,37 @@ int main(int argc, char *argv[])
 		exit(EXIT_FAILURE);
 	}
 
-	char line[MAX];
+	char chaine[MAX];
 
 	/* 1) Lecture du message de bienvenue jusqu'à la ligne vide */
-	while (buff_fgets_crlf(recep, line, MAX))
+	while (buff_fgets_crlf(recep, chaine, MAX))
 	{
-		crlf_to_lf(line);
+		crlf_to_lf(chaine);
 		/* supprimer '\n' final */
-		line[strcspn(line, "\n")] = '\0';
-		if (line[0] == '\0')
+		chaine[strcspn(chaine, "\n")] = '\0';
+		if (chaine[0] == '\0')
 			break;
-		printf("%s\n", line);
+		printf("%s\n", chaine);
 	}
 
 	/* 2) Envoi du pseudonyme */
 	printf("Entrez votre pseudonyme : ");
-	if (!fgets(line, MAX, stdin))
+	if (!fgets(chaine, MAX, stdin))
 	{
 		buff_free(recep);
 		close(client);
 		exit(EXIT_FAILURE);
 	}
 	/* supprimer '\n' et ajouter un seul avant conversion */
-	line[strcspn(line, "\n")] = '\0';
-	size_t L = strlen(line);
-	if (L < MAX - 1)
+	chaine[strcspn(chaine, "\n")] = '\0';
+	size_t size1 = strlen(chaine);
+	if (size1 < MAX - 1)
 	{
-		line[L] = '\n';
-		line[L + 1] = '\0';
+		chaine[size1] = '\n';
+		chaine[size1 + 1] = '\0';
 	}
-	lf_to_crlf(line);
-	if (write(client, line, strlen(line)) < 0)
+	lf_to_crlf(chaine);
+	if (write(client, chaine, strlen(chaine)) < 0)
 	{
 		perror("write pseudo");
 		buff_free(recep);
@@ -98,16 +98,16 @@ int main(int argc, char *argv[])
 	}
 
 	/* 3) Lecture de la réponse du serveur */
-	if (!buff_fgets_crlf(recep, line, MAX))
+	if (!buff_fgets_crlf(recep, chaine, MAX))
 	{
 		perror("buff_fgets_crlf");
 		buff_free(recep);
 		close(client);
 		exit(EXIT_FAILURE);
 	}
-	crlf_to_lf(line);
-	line[strcspn(line, "\n")] = '\0';
-	char code = line[0];
+	crlf_to_lf(chaine);
+	chaine[strcspn(chaine, "\n")] = '\0';
+	char code = chaine[0];
 	if (code != '0')
 	{
 		if (code == '1')
@@ -117,12 +117,12 @@ int main(int argc, char *argv[])
 		else if (code == '3')
 			fprintf(stderr, "Erreur : commande invalide\n");
 		else
-			fprintf(stderr, "Réponse inattendue : %s\n", line);
+			fprintf(stderr, "Réponse inattendue : %s\n", chaine);
 		buff_free(recep);
 		close(client);
 		exit(EXIT_FAILURE);
 	}
-	printf("Serveur : %s\n", line + 2);
+	printf("Serveur : %s\n", chaine + 2);
 
 	/* 4) Boucle de communication */
 	struct pollfd fds[2] = {
@@ -133,41 +133,40 @@ int main(int argc, char *argv[])
 	{
 		if (buff_ready(recep))
 		{
-			if (buff_fgets_crlf(recep, line, MAX))
+			if (buff_fgets_crlf(recep, chaine, MAX))
 			{
-				crlf_to_lf(line);
-				line[strcspn(line, "\n")] = '\0';
-				printf("Reçu : %s\n", line);
+				crlf_to_lf(chaine);
+				chaine[strcspn(chaine, "\n")] = '\0';
+				printf("Reçu : %s\n", chaine);
 				continue;
 			}
 		}
 		if (poll(fds, 2, -1) < 0)
 			break;
 
-		/* saisir et envoyer */
 		if (fds[0].revents & POLLIN)
 		{
-			if (!fgets(line, MAX, stdin))
+			if (!fgets(chaine, MAX, stdin))
 				break;
-			line[strcspn(line, "\n")] = '\0';
-			size_t l = strlen(line);
-			if (l < MAX - 1)
+			chaine[strcspn(chaine, "\n")] = '\0';
+			size_t size2 = strlen(chaine);
+			if (size2 < MAX - 1)
 			{
-				line[l] = '\n';
-				line[l + 1] = '\0';
+				chaine[size2] = '\n';
+				chaine[size2 + 1] = '\0';
 			}
-			lf_to_crlf(line);
-			write(client, line, strlen(line));
+			lf_to_crlf(chaine);
+			write(client, chaine, strlen(chaine));
 		}
 
 		/* réception serveur */
 		if (fds[1].revents & POLLIN)
 		{
-			if (!buff_fgets_crlf(recep, line, MAX))
+			if (!buff_fgets_crlf(recep, chaine, MAX))
 				break;
-			crlf_to_lf(line);
-			line[strcspn(line, "\n")] = '\0';
-			printf("Serveur : %s\n", line);
+			crlf_to_lf(chaine);
+			chaine[strcspn(chaine, "\n")] = '\0';
+			printf("Message de votre interlocuteur : %s\n", chaine);
 		}
 	}
 

@@ -80,7 +80,6 @@ void *handle_client(void *arg)
     list_add(list_user, iencli);
 
     char chaine[512];
-    // Boucle normale de réception et rebroadcast
     while (1)
     {
         ssize_t n = recv(iencli->sock, chaine, sizeof(chaine) - 1, 0);
@@ -138,8 +137,7 @@ int main(int argc, char *argv[])
 
         // Envoi du message de bienvenue (texte + ligne vide)
         char message[] =
-            "Bienvenue sur Freescord !\n"
-            "Veuillez choisir un pseudonyme qui commence par nickname(max 16, pas de ':')\n"
+            "Bienvenue sur Freescord ! Veuillez choisir un pseudonyme qui commence par nickname(max 16, pas de ':')\n"
             "\n";
         lf_to_crlf(message);
         send(iencli->sock, message, strlen(message), 0);
@@ -155,7 +153,7 @@ int main(int argc, char *argv[])
         }
         chaine[strlen(chaine)] = '\0';
 
-        const char *prefix = "nickname ";
+        char *prefix = "nickname ";
         if (strncmp(chaine, prefix, strlen(prefix)) != 0)
         {
             char rep[] = "3 Commande invalide\n";
@@ -166,7 +164,6 @@ int main(int argc, char *argv[])
             continue;
         }
 
-        // Extraction du pseudo (sans CRLF ni LF)
         char *pseudo = chaine + strlen(prefix);
         crlf_to_lf(pseudo);
 
@@ -181,7 +178,7 @@ int main(int argc, char *argv[])
             user_free(iencli);
             continue;
         }
-        if (strchr(pseudo, ':'))
+        if (strchr(pseudo, ':')) // Vérifie si pseudo contient ':'
         {
             char rep[] = "2 Caractère interdit\n";
             lf_to_crlf(rep);
@@ -191,14 +188,12 @@ int main(int argc, char *argv[])
             continue;
         }
 
-        // OK : on stocke et on répond 0
         strncpy(iencli->nickname, pseudo, sizeof(iencli->nickname) - 1);
         iencli->nickname[strlen(iencli->nickname) - 1] = '\0';
         char rep0[] = "0 Bienvenue !\n";
         lf_to_crlf(rep0);
         send(iencli->sock, rep0, strlen(rep0), 0);
 
-        // Lancement du thread de réception
         pthread_t th;
         if (pthread_create(&th, NULL, handle_client, iencli) != 0)
         {
